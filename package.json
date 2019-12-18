@@ -20,5 +20,9 @@
   "bugs": {
     "url": "https://github.com/kaylathedev/life360-node-api/issues"
   },
-  "homepage": "https://github.com/kaylathedev/life360-node-api#readme"
+  "homepage": "https://github.com/kaylathedev/life360-node-api#readme",
+  "dependencies": {
+    "https": "^1.0.0",
+    "querystring": "^0.2.0"
+  }
 }

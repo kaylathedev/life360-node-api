@@ -1,0 +1,24 @@
+{
+  "name": "life360-node-api",
+  "version": "0.0.1",
+  "description": "An unofficial hook into Life360.com's API.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kaylathedev/life360-node-api.git"
+  },
+  "keywords": [
+    "life360",
+    "tracking",
+    "family"
+  ],
+  "author": "Kayla Colflesh",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kaylathedev/life360-node-api/issues"
+  },
+  "homepage": "https://github.com/kaylathedev/life360-node-api#readme"
+}

@@ -1,6 +1,8 @@
 const https = require('https');
 const querystring = require('querystring');
 
+let DEBUG_FLAG = false;
+
 /**
  * Trys to create an integer from a variable of unknown type.
  * 
@@ -101,7 +103,7 @@ function findLatLonFromVariable(x) {
   throw new Error('Unable to parse coordinates');
 }
 
-class life360_helper {
+class life360_api_helper {
   /**
    * Should be only used internally. Creates a helper object that will allow for communication with the Life360 API.
    * @param {life360} api 
@@ -121,21 +123,25 @@ class life360_helper {
     }
   }
   *[Symbol.iterator]() {
-    if (this.children === undefined) {
+    if (this.length === undefined) {
       throw new Error('This object can not be iterated on!');
     }
-    for (var i = 0, len = this.children.length; i < len; i++) {
-      yield this.children[i];
+    for (var i = 0, len = this.length; i < len; i++) {
+      yield this[i];
     }
   }
   clearChildren() {
-    this.children = [];
+    for (var i = 0, len = this.length; i < len; i++) {
+      this[i] = undefined;
+    }
+    this.length = 0;
   }
   addChild(child) {
-    if (this.children === undefined) {
-      this.children = [];
+    if (this.length === undefined) {
+      this.length = 0;
     }
-    this.children.push(child);
+    this[this.length] = child;
+    this.length++;
     return child;
   }
 }
@@ -145,7 +151,7 @@ class life360_helper {
  * 
  * Use the check() method to ask the server for the status of the request.
  */
-class life360_location_request extends life360_helper {
+class life360_location_request extends life360_api_helper {
   constructor(api, props) {
     super(api, props);
     this.requestId = props.requestId;
@@ -165,7 +171,7 @@ class life360_location_request extends life360_helper {
   }
 }
 
-class life360_checkin_request extends life360_helper {
+class life360_checkin_request extends life360_api_helper {
   constructor(api, props) {
     super(api, props);
     this.requestId = props.requestId;
@@ -190,7 +196,7 @@ class life360_checkin_request extends life360_helper {
   }
 }
 
-class life360_circle extends life360_helper {
+class life360_circle extends life360_api_helper {
   _fix() {
     if (this.members && !(this.members instanceof life360_member_list)) {
       var members = new life360_member_list(this.api);
@@ -215,12 +221,12 @@ class life360_circle extends life360_helper {
     return new life360_place_list(this, json.places);
   }
   async code() {
-    if (this.api.DEBUG_FLAG === false) throw 'not implemented';
+    if (global.DEBUG_FLAG === false) throw 'not implemented';
     var json = await this.request('/v3/circles/' + this.id + '/code');
     return json;
   }
   async emergencyContacts() {
-    if (this.api.DEBUG_FLAG === false) throw 'not implemented';
+    if (global.DEBUG_FLAG === false) throw 'not implemented';
     var json = await this.request('/v3/circles/' + this.id + '/emergencyContacts');
     var emergencyContacts = json.emergencyContacts; // array
     for (var emergencyContact of emergencyContacts) {
@@ -299,7 +305,7 @@ class life360_circle extends life360_helper {
     return json;
   }
   async watchList() {
-    if (this.api.DEBUG_FLAG === false) throw 'not implemented';
+    if (global.DEBUG_FLAG === false) throw 'not implemented';
     var json = await this.request('/v3/circles/' + this.id + '/driverbehavior/watchlist');
     debugger;
     /*
@@ -336,10 +342,10 @@ class life360_circle extends life360_helper {
     return json;
   }
 }
-class life360_circle_list extends life360_helper {
+class life360_circle_list extends life360_api_helper {
 }
 
-class life360_crime extends life360_helper {
+class life360_crime extends life360_api_helper {
   _fix() {
     if (this.incidentDate !== undefined && typeof this.incidentDate !== 'object') this.incidentDate = tryCreateDate(this.incidentDate);
     if (this.incident_date !== undefined && typeof this.incident_date !== 'object') this.incident_date = tryCreateDate(this.incident_date);
@@ -347,17 +353,17 @@ class life360_crime extends life360_helper {
     if (this.id !== undefined && typeof this.id === 'string') this.id = tryCreateInt(this.id);
   }
 }
-class life360_crime_list extends life360_helper {
+class life360_crime_list extends life360_api_helper {
 }
 
-class life360_offender extends life360_helper {
+class life360_offender extends life360_api_helper {
   _fix() {
   }
 }
-class life360_offender_list extends life360_helper {
+class life360_offender_list extends life360_api_helper {
 }
 
-class life360_safetypoint extends life360_helper {
+class life360_safetypoint extends life360_api_helper {
   _fix() {
     if (this.incidentDate !== undefined && typeof this.incidentDate !== 'object') this.incidentDate = tryCreateDate(this.incidentDate);
     if (this.incident_date !== undefined && typeof this.incident_date !== 'object') this.incident_date = tryCreateDate(this.incident_date);
@@ -365,10 +371,10 @@ class life360_safetypoint extends life360_helper {
     if (this.id !== undefined && typeof this.id === 'string') this.id = tryCreateInt(this.id);
   }
 }
-class life360_safetypoint_list extends life360_helper {
+class life360_safetypoint_list extends life360_api_helper {
 }
 
-class life360_location extends life360_helper {
+class life360_location extends life360_api_helper {
   _fix() {
     if (this.startTimestamp !== undefined && typeof this.startTimestamp !== 'object') this.startTimestamp = tryCreateDate(this.startTimestamp);
     if (this.endTimestamp !== undefined && typeof this.endTimestamp !== 'object') this.endTimestamp = tryCreateDate(this.endTimestamp);
@@ -385,10 +391,10 @@ class life360_location extends life360_helper {
     if (this.wifiState !== undefined && typeof this.wifiState !== 'boolean') this.wifiState = tryCreateBool(this.wifiState);
   }
 }
-class life360_location_list extends life360_helper {
+class life360_location_list extends life360_api_helper {
 }
 
-class life360_member extends life360_helper {
+class life360_member extends life360_api_helper {
   _fix() {
     if (this.createdAt !== undefined && typeof this.createdAt !== 'object') this.createdAt = tryCreateDate(this.createdAt);
     if (this.isAdmin !== undefined && typeof this.isAdmin !== 'boolean') this.isAdmin = tryCreateBool(this.isAdmin);
@@ -449,19 +455,19 @@ class life360_member extends life360_helper {
     return request;
   }
 }
-class life360_member_list extends life360_helper {
+class life360_member_list extends life360_api_helper {
 }
 
-class life360_message extends life360_helper {
+class life360_message extends life360_api_helper {
 }
 
-class life360_place extends life360_helper {
+class life360_place extends life360_api_helper {
 }
 
-class life360_thread extends life360_helper {
+class life360_thread extends life360_api_helper {
 }
 
-class life360_session extends life360_helper {
+class life360_session extends life360_api_helper {
 }
 
 class life360 {
@@ -476,10 +482,10 @@ class life360 {
     };
   }
   enableDebugging() {
-    this.DEBUG_FLAG = true;
+    global.DEBUG_FLAG = true;
   }
   disableDebugging() {
-    this.DEBUG_FLAG = false;
+    global.DEBUG_FLAG = false;
   }
   async login(username, password) {
     var json = await this.request('/v3/oauth2/token', {
@@ -502,7 +508,7 @@ class life360 {
     if (this.session) {
       var access_token = this.session.access_token;
       var token_type = this.session.token_type;
-      if (this.DEBUG_FLAG === false) throw 'not implemented';
+      if (global.DEBUG_FLAG === false) throw 'not implemented';
       debugger;
       this.session = undefined;
       this.authorization = undefined;
@@ -802,7 +808,7 @@ class life360 {
               }
             }
 
-            if (self.DEBUG_FLAG === false && typeof body === 'object' && body.errorMessage !== undefined) {
+            if (global.DEBUG_FLAG === false && typeof body === 'object' && body.errorMessage !== undefined) {
               return fail(new Error('API responded with a ' + body.errorMessage));
             } else if (res.statusCode !== 200) {
               return fail(new Error('Server responded with a ' + res.statusCode + ', ' + res.statusMessage));

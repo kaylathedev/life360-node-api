@@ -103,7 +103,7 @@ function findLatLonFromVariable(x) {
   throw new Error('Unable to parse coordinates');
 }
 
-class life360_api_helper {
+class life360_helper {
   /**
    * Should be only used internally. Creates a helper object that will allow for communication with the Life360 API.
    * @param {life360} api 
@@ -151,19 +151,16 @@ class life360_api_helper {
  * 
  * Use the check() method to ask the server for the status of the request.
  */
-class life360_location_request extends life360_api_helper {
+class life360_location_request extends life360_helper {
   constructor(api, props) {
     super(api, props);
     this.requestId = props.requestId;
     this.isPollable = props.isPollable;
   }
-  getLocation() {
-    if (this.location !== undefined) return this.location;
-  }
   async check() {
     var json = await this.request('/v3/circles/members/request/' + this.requestId);
     if (json.status === 'A') {
-      this.location = new life360_location(json.location);
+      this.location = new life360_location(this.api, json.location);
       this.success_response = json;
       return true;
     }
@@ -171,7 +168,7 @@ class life360_location_request extends life360_api_helper {
   }
 }
 
-class life360_checkin_request extends life360_api_helper {
+class life360_checkin_request extends life360_helper {
   constructor(api, props) {
     super(api, props);
     this.requestId = props.requestId;
@@ -196,13 +193,13 @@ class life360_checkin_request extends life360_api_helper {
   }
 }
 
-class life360_circle extends life360_api_helper {
+class life360_circle extends life360_helper {
   _fix() {
     if (this.members && !(this.members instanceof life360_member_list)) {
       var members = new life360_member_list(this.api);
       members.circle = this;
       for (var i = 0; i < this.members.length; i++) {
-        var child = members.addChild(new life360_member(this.members[i]));
+        var child = members.addChild(new life360_member(this.api, this.members[i]));
         child.circle = this;
       }
       this.members = members;
@@ -225,7 +222,7 @@ class life360_circle extends life360_api_helper {
     var json = await this.request('/v3/circles/' + this.id + '/code');
     return json;
   }
-  async emergencyContacts() {
+  async emergencycontacts() {
     if (global.DEBUG_FLAG === false) throw 'not implemented';
     var json = await this.request('/v3/circles/' + this.id + '/emergencyContacts');
     var emergencyContacts = json.emergencyContacts; // array
@@ -265,16 +262,16 @@ class life360_circle extends life360_api_helper {
     var json = await this.request('/v3/circles/' + this.id + '/members/history', { params: params });
     var locations = new life360_location_list(this.api);
     for (var i = 0; i < json.locations.length; i++) {
-      locations.addChild(new life360_location(json[i].locations));
+      locations.addChild(new life360_location(this.api, json[i].locations));
     }
     return locations;
   }
-  async listMembers() {
+  async members() {
     var json = await this.request('/v3/circles/' + this.id + '/members');
     this.members = new life360_member_list(this.api);
     this.members.circle = this;
     for (var i = 0; i < json.members.length; i++) {
-      var child = this.members.addChild(new life360_member(json.members[i]));
+      var child = this.members.addChild(new life360_member(this.api, json.members[i]));
       child.circle = this;
     }
     return this.members;
@@ -304,7 +301,7 @@ class life360_circle extends life360_api_helper {
     debugger;
     return json;
   }
-  async watchList() {
+  async watchlist() {
     if (global.DEBUG_FLAG === false) throw 'not implemented';
     var json = await this.request('/v3/circles/' + this.id + '/driverbehavior/watchlist');
     debugger;
@@ -342,10 +339,10 @@ class life360_circle extends life360_api_helper {
     return json;
   }
 }
-class life360_circle_list extends life360_api_helper {
+class life360_circle_list extends life360_helper {
 }
 
-class life360_crime extends life360_api_helper {
+class life360_crime extends life360_helper {
   _fix() {
     if (this.incidentDate !== undefined && typeof this.incidentDate !== 'object') this.incidentDate = tryCreateDate(this.incidentDate);
     if (this.incident_date !== undefined && typeof this.incident_date !== 'object') this.incident_date = tryCreateDate(this.incident_date);
@@ -353,17 +350,17 @@ class life360_crime extends life360_api_helper {
     if (this.id !== undefined && typeof this.id === 'string') this.id = tryCreateInt(this.id);
   }
 }
-class life360_crime_list extends life360_api_helper {
+class life360_crime_list extends life360_helper {
 }
 
-class life360_offender extends life360_api_helper {
+class life360_offender extends life360_helper {
   _fix() {
   }
 }
-class life360_offender_list extends life360_api_helper {
+class life360_offender_list extends life360_helper {
 }
 
-class life360_safetypoint extends life360_api_helper {
+class life360_safetypoint extends life360_helper {
   _fix() {
     if (this.incidentDate !== undefined && typeof this.incidentDate !== 'object') this.incidentDate = tryCreateDate(this.incidentDate);
     if (this.incident_date !== undefined && typeof this.incident_date !== 'object') this.incident_date = tryCreateDate(this.incident_date);
@@ -371,10 +368,10 @@ class life360_safetypoint extends life360_api_helper {
     if (this.id !== undefined && typeof this.id === 'string') this.id = tryCreateInt(this.id);
   }
 }
-class life360_safetypoint_list extends life360_api_helper {
+class life360_safetypoint_list extends life360_helper {
 }
 
-class life360_location extends life360_api_helper {
+class life360_location extends life360_helper {
   _fix() {
     if (this.startTimestamp !== undefined && typeof this.startTimestamp !== 'object') this.startTimestamp = tryCreateDate(this.startTimestamp);
     if (this.endTimestamp !== undefined && typeof this.endTimestamp !== 'object') this.endTimestamp = tryCreateDate(this.endTimestamp);
@@ -391,10 +388,10 @@ class life360_location extends life360_api_helper {
     if (this.wifiState !== undefined && typeof this.wifiState !== 'boolean') this.wifiState = tryCreateBool(this.wifiState);
   }
 }
-class life360_location_list extends life360_api_helper {
+class life360_location_list extends life360_helper {
 }
 
-class life360_member extends life360_api_helper {
+class life360_member extends life360_helper {
   _fix() {
     if (this.createdAt !== undefined && typeof this.createdAt !== 'object') this.createdAt = tryCreateDate(this.createdAt);
     if (this.isAdmin !== undefined && typeof this.isAdmin !== 'boolean') this.isAdmin = tryCreateBool(this.isAdmin);
@@ -426,7 +423,7 @@ class life360_member extends life360_api_helper {
     var json = await this.request('/v3/circles/' + this.circle.id + '/members/' + this.id + '/history', { params: params });
     var locations = new life360_location_list(this.api);
     for (var i = 0; i < json.locations.length; i++) {
-      locations.addChild(new life360_location(json.locations[i]));
+      locations.addChild(new life360_location(this.api, json.locations[i]));
     }
     return locations;
   }
@@ -455,23 +452,52 @@ class life360_member extends life360_api_helper {
     return request;
   }
 }
-class life360_member_list extends life360_api_helper {
+class life360_member_list extends life360_helper {
 }
 
-class life360_message extends life360_api_helper {
+class life360_message extends life360_helper {
 }
 
-class life360_place extends life360_api_helper {
+class life360_place extends life360_helper {
 }
 
-class life360_thread extends life360_api_helper {
+class life360_thread extends life360_helper {
 }
 
-class life360_session extends life360_api_helper {
+class life360_session extends life360_helper {
 }
 
 class life360 {
+  static login() {
+    if (this._instance === undefined) this._instance = new life360();
+    return this._instance.login.apply(this._instance, arguments);
+  }
+  static logout() {
+    if (this._instance === undefined) this._instance = new life360();
+    return this._instance.logout.apply(this._instance, arguments);
+  }
+  static crimes() {
+    if (this._instance === undefined) this._instance = new life360();
+    return this._instance.crimes.apply(this._instance, arguments);
+  }
+  static me() {
+    if (this._instance === undefined) this._instance = new life360();
+    return this._instance.me.apply(this._instance, arguments);
+  }
+  static circles() {
+    if (this._instance === undefined) this._instance = new life360();
+    return this._instance.circles.apply(this._instance, arguments);
+  }
+  static safetypoints() {
+    if (this._instance === undefined) this._instance = new life360();
+    return this._instance.safetypoints.apply(this._instance, arguments);
+  }
+  static offenders() {
+    if (this._instance === undefined) this._instance = new life360();
+    return this._instance.offenders.apply(this._instance, arguments);
+  }
   constructor() {
+    this.BASIC_AUTH = 'Basic U3dlcUFOQWdFVkVoVWt1cGVjcmVrYXN0ZXFhVGVXckFTV2E1dXN3MzpXMnZBV3JlY2hhUHJlZGFoVVJhZ1VYYWZyQW5hbWVqdQ==';
     this.defaults = {
       hostname: 'www.life360.com',
       headers: {
@@ -487,24 +513,66 @@ class life360 {
   disableDebugging() {
     global.DEBUG_FLAG = false;
   }
-  async login(username, password) {
+  /**
+   * Asks Life360.com to login a user.
+   */
+  async login() {
+    var body = {
+      countryCode: 1,
+      password: '',
+      username: '',
+      phone: '',
+      grant_type: 'password',
+    };
+    if (arguments.length === 0) {
+      throw new Error('Must provide an argument to life360.login');
+    } else if (arguments.length === 1) {
+      var arg = arguments[0];
+      if (typeof arg === 'object') {
+        if (arg.username !== undefined) body.username = arg.username;
+        if (arg.user !== undefined) body.username = arg.user;
+        if (arg.email !== undefined) body.username = arg.email;
+
+        if (arg.phone !== undefined) body.phone = arg.phone;
+
+        if (arg.password !== undefined) body.password = arg.password;
+        if (arg.pass !== undefined) body.password = arg.pass;
+      } else {
+        throw new Error('First and only argument must be an object');
+      }
+    } else if (arguments.length === 2) {
+      var arg1 = arguments[0];
+      var arg2 = arguments[1];
+      if (typeof arg1 === 'string') {
+        var emailRegex = /^[^@]+@[^\.]+$/;
+        if (arg1.match(emailRegex)) {
+          body.username = arg1;
+        } else {
+          var phoneRegex = /^[0-9()-+ #\.]+$/;
+          if (arg1.match(phoneRegex)) {
+            body.phone = arg1;
+          } else {
+            body.username = arg1;
+          }
+        }
+      }
+      if (typeof arg2 === 'string') {
+        body.password = arg2;
+      } else {
+        throw new Error('Second argument must be a password string');
+      }
+    }
     var json = await this.request('/v3/oauth2/token', {
-      authorization: 'Basic U3dlcUFOQWdFVkVoVWt1cGVjcmVrYXN0ZXFhVGVXckFTV2E1dXN3MzpXMnZBV3JlY2hhUHJlZGFoVVJhZ1VYYWZyQW5hbWVqdQ==',
-      body: {
-        countryCode: 1,
-        password: password,
-        username: username,
-        phone: '',
-        grant_type: 'password',
-      },
+      authorization: this.BASIC_AUTH,
+      body: body,
     });
     var token_type = json.token_type;
     if (!token_type) token_type = 'Bearer';
     this.authorization = token_type + ' ' + json.access_token;
     this.session = new life360_session(this, json);
-    return json;
+    return this;
   }
-  logout() {
+  async logout() {
     if (this.session) {
       var access_token = this.session.access_token;
       var token_type = this.session.token_type;
@@ -516,7 +584,7 @@ class life360 {
       throw new Error('Not logged in.');
     }
   }
-  async listCrimes(args) {
+  async crimes(args) {
     var params = {};
     if (args) {
       if (args.start) params.startDate = args.start;
@@ -548,24 +616,24 @@ class life360 {
     var crimes_json = json.crimes;
     var crimes = new life360_crime_list(this);
     for (var i = 0; i < crimes_json.length; i++) {
-      crimes.addChild(new life360_crime(crimes_json[i]));
+      crimes.addChild(new life360_crime(this.api, crimes_json[i]));
     }
     return crimes;
   }
-  async getMe() {
+  async me() {
     var json = this.request('/v3/users/me');
-    this.me = new life360_member(this, json);
-    return this.me;
+    this._me = new life360_member(this, json);
+    return this._me;
   }
-  async listCircles() {
+  async circles() {
     var json = await this.request('/v3/circles');
     this.circles = new life360_circle_list(this);
     for (var i = 0; i < json.circles.length; i++) {
-      this.circles.addChild(new life360_circle(json.circles[i]));
+      this.circles.addChild(new life360_circle(this, json.circles[i]));
     }
     return this.circles;
   }
-  async listSafetyPoints() {
+  async safetypoints() {
     var params = {};
     var args = arguments;
     if (args.length === 1) {
@@ -579,12 +647,12 @@ class life360 {
     var json = await this.request('/v3/safetyPoints', { params: params });
     var locations = new life360_safetypoint_list(this.api);
     for (var i = 0; i < json.safetyPoints.length; i++) {
-      var child = locations.addChild(new life360_safetypoint(json.safetyPoints[i]));
+      var child = locations.addChild(new life360_safetypoint(this.api, json.safetyPoints[i]));
       child.locationType = 'safetyPoint';
     }
     return locations;
   }
-  async listOffenders() {
+  async offenders() {
     var params = {};
     var args = arguments;
     if (args.length === 1) {
@@ -598,7 +666,7 @@ class life360 {
     var json = await this.request('/v3/safetyPoints', { params: params });
     var locations = new life360_offender_list(this.api);
     for (var i = 0; i < json.safetyPoints.length; i++) {
-      var child = locations.addChild(new life360_offender(json.safetyPoints[i]));
+      var child = locations.addChild(new life360_offender(this.api, json.safetyPoints[i]));
       child.locationType = 'safetyPoint';
     }
     return locations;

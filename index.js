@@ -110,26 +110,26 @@ class life360_helper {
    * @param {object} [props]
    */
   constructor(api, props) {
-    if (api === undefined || !(api instanceof life360)) {
-      throw new Error('First argument must be an instance of life360!');
+      if (api === undefined || !(api instanceof life360)) {
+        throw new Error('First argument must be an instance of life360!');
+      }
+      this.api = api;
+      this.request = api.request.bind(this.api);
+      if (props !== undefined) {
+        Object.assign(this, props);
+      }
+      if (this._fix !== undefined) {
+        this._fix();
+      }
     }
-    this.api = api;
-    this.request = api.request.bind(this.api);
-    if (props !== undefined) {
-      Object.assign(this, props);
+    *[Symbol.iterator]() {
+      if (this.length === undefined) {
+        throw new Error('This object can not be iterated on!');
+      }
+      for (var i = 0, len = this.length; i < len; i++) {
+        yield this[i];
+      }
     }
-    if (this._fix !== undefined) {
-      this._fix();
-    }
-  }
-  *[Symbol.iterator]() {
-    if (this.length === undefined) {
-      throw new Error('This object can not be iterated on!');
-    }
-    for (var i = 0, len = this.length; i < len; i++) {
-      yield this[i];
-    }
-  }
   clearChildren() {
     for (var i = 0, len = this.length; i < len; i++) {
       this[i] = undefined;
@@ -339,8 +339,7 @@ class life360_circle extends life360_helper {
     return json;
   }
 }
-class life360_circle_list extends life360_helper {
-}
+class life360_circle_list extends life360_helper {}
 
 class life360_crime extends life360_helper {
   _fix() {
@@ -350,15 +349,12 @@ class life360_crime extends life360_helper {
     if (this.id !== undefined && typeof this.id === 'string') this.id = tryCreateInt(this.id);
   }
 }
-class life360_crime_list extends life360_helper {
-}
+class life360_crime_list extends life360_helper {}
 
 class life360_offender extends life360_helper {
-  _fix() {
-  }
+  _fix() {}
 }
-class life360_offender_list extends life360_helper {
-}
+class life360_offender_list extends life360_helper {}
 
 class life360_safetypoint extends life360_helper {
   _fix() {
@@ -368,8 +364,7 @@ class life360_safetypoint extends life360_helper {
     if (this.id !== undefined && typeof this.id === 'string') this.id = tryCreateInt(this.id);
   }
 }
-class life360_safetypoint_list extends life360_helper {
-}
+class life360_safetypoint_list extends life360_helper {}
 
 class life360_location extends life360_helper {
   _fix() {
@@ -388,8 +383,7 @@ class life360_location extends life360_helper {
     if (this.wifiState !== undefined && typeof this.wifiState !== 'boolean') this.wifiState = tryCreateBool(this.wifiState);
   }
 }
-class life360_location_list extends life360_helper {
-}
+class life360_location_list extends life360_helper {}
 
 class life360_member extends life360_helper {
   _fix() {
@@ -452,20 +446,15 @@ class life360_member extends life360_helper {
     return request;
   }
 }
-class life360_member_list extends life360_helper {
-}
+class life360_member_list extends life360_helper {}
 
-class life360_message extends life360_helper {
-}
+class life360_message extends life360_helper {}
 
-class life360_place extends life360_helper {
-}
+class life360_place extends life360_helper {}
 
-class life360_thread extends life360_helper {
-}
+class life360_thread extends life360_helper {}
 
-class life360_session extends life360_helper {
-}
+class life360_session extends life360_helper {}
 
 class life360 {
   static login() {
@@ -627,11 +616,11 @@ class life360 {
   }
   async circles() {
     var json = await this.request('/v3/circles');
-    this.circles = new life360_circle_list(this);
+    this._circles = new life360_circle_list(this);
     for (var i = 0; i < json.circles.length; i++) {
-      this.circles.addChild(new life360_circle(this, json.circles[i]));
+      this._circles.addChild(new life360_circle(this, json.circles[i]));
     }
-    return this.circles;
+    return this._circles;
   }
   async safetypoints() {
     var params = {};
@@ -684,6 +673,7 @@ class life360 {
       options.path = a;
     }
     var self = this;
+
     function findHeaderCaseInsensitive(name, headers) {
       var keys = Object.keys(headers);
       for (var i = 0; i < keys.length; i++) {
@@ -856,14 +846,14 @@ class life360 {
           }
         }
 
-        res.on('data', function (chunk) {
+        res.on('data', function(chunk) {
           if (buffer === undefined) {
             buffer = chunk;
           } else {
             buffer = Buffer.concat([buffer, chunk]);
           }
         });
-        res.on('end', function () {
+        res.on('end', function() {
           try {
             // done reading body
 

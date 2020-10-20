@@ -2,6 +2,11 @@
 
 [Go back](README.md)
 
+* [Disecting Circles](DISECTION_CIRCLES.md)
+* [Disecting "Put Location"](DISECTION_PUT_LOCATION.md)
+
+## Setup
+
 Using Debian 10.2 with a bash terminal. Installed curl.
 
 Base url is `https://www.life360.com/` 

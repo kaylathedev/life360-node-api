@@ -1,6 +1,6 @@
 {
   "name": "life360-node-api",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "An unofficial hook into Life360.com's API.",
   "main": "index.js",
   "scripts": {
@@ -27,6 +27,6 @@
   },
   "devDependencies": {
     "chai": "^4.2.0",
-    "mocha": "^6.2.2"
+    "mocha": "^8.2.0"
   }
 }

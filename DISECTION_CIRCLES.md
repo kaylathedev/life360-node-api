@@ -1,4 +1,4 @@
-# Disection of the Life360.com undocument API - Circles
+# Disection of the Life360.com undocumented API - Circles
 
 [Go back](DISECTION.md)
 

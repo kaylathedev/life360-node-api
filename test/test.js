@@ -17,9 +17,9 @@ try {
 
 describe('Life360', () => {
 
-  describe('login', () => {
+  describe('login with user/pass object', () => {
     it('should login successfully', () => {
-      var login = life360.login(credentials);
+      var login = await life360.login(credentials);
       console.log(login);
       return true;
     })

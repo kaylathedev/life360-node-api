@@ -115,11 +115,11 @@ class life360_helper {
       }
       this.api = api;
       this.request = api.request.bind(this.api);
-      if (props !== undefined) {
-        Object.assign(this, props);
-      }
-      if (this._fix !== undefined) {
-        this._fix();
+      if (props instanceof Object) {
+        this._originalProperties = props;
+        if (this.onPopulate !== undefined) {
+          this.onPopulate(props);
+        }
       }
     }
     *[Symbol.iterator]() {
@@ -194,20 +194,29 @@ class life360_checkin_request extends life360_helper {
 }
 
 class life360_circle extends life360_helper {
-  _fix() {
-    if (this.members && !(this.members instanceof life360_member_list)) {
-      var members = new life360_member_list(this.api);
-      members.circle = this;
-      for (var i = 0; i < this.members.length; i++) {
-        var child = members.addChild(new life360_member(this.api, this.members[i]));
+  onPopulate(x) {
+    this.id = x.id;
+    this.color = x.color;
+    this.createdAt = tryCreateDate(x.createdAt);
+    this.features = x.features;
+    this.memberCount = tryCreateInt(x.memberCount);
+    this.name = x.name;
+    this.type = x.type;
+    this.unreadMessages = x.unreadMessages;
+    this.unreadNotifications = x.unreadNotifications;
+
+    this.members = new life360_member_list(this.api);
+    this.members.circle = this;
+    if (x.members) {
+      for (var i = 0; i < x.members.length; i++) {
+        const child = this.members.addChild(new life360_member(this.api, x.members[i]));
         child.circle = this;
       }
-      this.members = members;
     }
   }
   async refresh() {
-    var json = await this.request('/v3/circles/' + this.id);
-    this._fix(json);
+    const json = await this.request('/v3/circles/' + this.id);
+    this.onPopulate(json);
     return this;
   }
 
@@ -266,26 +275,26 @@ class life360_circle extends life360_helper {
     }
     return locations;
   }
-  async members() {
+  async listMembers() {
     var json = await this.request('/v3/circles/' + this.id + '/members');
     this.members = new life360_member_list(this.api);
     this.members.circle = this;
-    for (var i = 0; i < json.members.length; i++) {
-      var child = this.members.addChild(new life360_member(this.api, json.members[i]));
+    for (let i = 0; i < json.members.length; i++) {
+      const child = this.members.addChild(new life360_member(this.api, json.members[i]));
       child.circle = this;
     }
     return this.members;
   }
-  async messages(count) {
-    var params;
-    if (count !== undefined) params = { count: count };
+  async listMessages(count) {
+    let params;
+    if (count !== undefined) params = { count };
     var json = await this.request('/v3/circles/' + this.id + '/messages', {
       params: params,
     });
     debugger;
     return json;
   }
-  async nearbyplaces(lat, lon, wifiscan) {
+  async listNearbyplaces(lat, lon, wifiscan) {
     var params;
     if (wifiscan !== undefined) {
       params = { wifiscan: wifiscan };
@@ -295,7 +304,7 @@ class life360_circle extends life360_helper {
     debugger;
     return json;
   }
-  async places() {
+  async listPlaces() {
     var json = await this.request('/v3/circles/' + this.id + '/places');
     // todo: return life360_place_list
     debugger;
@@ -339,69 +348,116 @@ class life360_circle extends life360_helper {
     return json;
   }
 }
-class life360_circle_list extends life360_helper {}
+class life360_circle_list extends life360_helper {
+  findById(id) {
+    for (const circle of this) {
+      if (circle.id === id) {
+        return circle;
+      }
+    }
+  }
+  findByName(name) {
+    const regex = new RegExp('.*' + name + '.*', 'i');
+    for (const circle of this) {
+      if (circle.name.match(regex)) {
+        return circle;
+      }
+    }
+  }
+}
 
 class life360_crime extends life360_helper {
-  _fix() {
-    if (this.incidentDate !== undefined && typeof this.incidentDate !== 'object') this.incidentDate = tryCreateDate(this.incidentDate);
-    if (this.incident_date !== undefined && typeof this.incident_date !== 'object') this.incident_date = tryCreateDate(this.incident_date);
+  onPopulate(x) {
+    if (x.incidentDate !== undefined) this.incidentDate = tryCreateDate(x.incidentDate);
+    if (x.incident_date !== undefined) this.incident_date = tryCreateDate(x.incident_date);
 
-    if (this.id !== undefined && typeof this.id === 'string') this.id = tryCreateInt(this.id);
+    if (x.id !== undefined) this.id = tryCreateInt(x.id);
   }
 }
 class life360_crime_list extends life360_helper {}
 
-class life360_offender extends life360_helper {
-  _fix() {}
-}
+class life360_offender extends life360_helper {}
+
 class life360_offender_list extends life360_helper {}
 
 class life360_safetypoint extends life360_helper {
-  _fix() {
-    if (this.incidentDate !== undefined && typeof this.incidentDate !== 'object') this.incidentDate = tryCreateDate(this.incidentDate);
-    if (this.incident_date !== undefined && typeof this.incident_date !== 'object') this.incident_date = tryCreateDate(this.incident_date);
+  onPopulate(x) {
+    if (x.incidentDate !== undefined) this.incidentDate = tryCreateDate(x.incidentDate);
+    if (x.incident_date !== undefined) this.incident_date = tryCreateDate(x.incident_date);
 
-    if (this.id !== undefined && typeof this.id === 'string') this.id = tryCreateInt(this.id);
+    if (x.id !== undefined) this.id = tryCreateInt(x.id);
   }
 }
 class life360_safetypoint_list extends life360_helper {}
 
 class life360_location extends life360_helper {
-  _fix() {
-    if (this.startTimestamp !== undefined && typeof this.startTimestamp !== 'object') this.startTimestamp = tryCreateDate(this.startTimestamp);
-    if (this.endTimestamp !== undefined && typeof this.endTimestamp !== 'object') this.endTimestamp = tryCreateDate(this.endTimestamp);
-    if (this.since !== undefined && typeof this.since !== 'object') this.since = tryCreateDate(this.since);
-    if (this.timestamp !== undefined && typeof this.timestamp !== 'object') this.timestamp = tryCreateDate(this.timestamp);
+  onPopulate(x) {
+    this.address1 = x.address1;
+    this.address2 = x.address2;
+    this.driveSDKStatus = x.driveSDKStatus;
+    this.latitude = x.latitude;
+    this.longitude = x.longitude;
+    this.name = x.name;
+    this.placeType = x.placeType;
+    this.shortAddress = x.shortAddress;
+    this.source = x.source;
+    this.sourceId = x.sourceId;
+    this.tripId = x.tripId;
+    this.userActivity = x.userActivity;
 
-    if (this.accuracy !== undefined && typeof this.accuracy === 'string') this.accuracy = tryCreateInt(this.accuracy);
-    if (this.battery !== undefined && typeof this.battery === 'string') this.battery = tryCreateInt(this.battery);
-    if (this.charge !== undefined && typeof this.charge === 'string') this.charge = tryCreateInt(this.charge);
-    if (this.speed !== undefined && typeof this.speed === 'string') this.speed = tryCreateInt(this.speed);
+    if (x.startTimestamp !== undefined) this.startTimestamp = tryCreateDate(x.startTimestamp);
+    if (x.endTimestamp !== undefined) this.endTimestamp = tryCreateDate(x.endTimestamp);
+    if (x.since !== undefined) this.since = tryCreateDate(x.since);
+    if (x.timestamp !== undefined) this.timestamp = tryCreateDate(x.timestamp);
 
-    if (this.inTransit !== undefined && typeof this.inTransit !== 'boolean') this.inTransit = tryCreateBool(this.inTransit);
-    if (this.isDriving !== undefined && typeof this.isDriving !== 'boolean') this.isDriving = tryCreateBool(this.isDriving);
-    if (this.wifiState !== undefined && typeof this.wifiState !== 'boolean') this.wifiState = tryCreateBool(this.wifiState);
+    if (x.accuracy !== undefined) this.accuracy = tryCreateInt(x.accuracy);
+    if (x.battery !== undefined) this.battery = tryCreateInt(x.battery);
+    if (x.charge !== undefined) this.charge = tryCreateInt(x.charge);
+    if (x.speed !== undefined) this.speed = tryCreateInt(x.speed);
+
+    if (x.inTransit !== undefined) this.inTransit = tryCreateBool(x.inTransit);
+    if (x.isDriving !== undefined) this.isDriving = tryCreateBool(x.isDriving);
+    if (x.wifiState !== undefined) this.wifiState = tryCreateBool(x.wifiState);
   }
 }
 class life360_location_list extends life360_helper {}
 
 class life360_member extends life360_helper {
-  _fix() {
-    if (this.createdAt !== undefined && typeof this.createdAt !== 'object') this.createdAt = tryCreateDate(this.createdAt);
-    if (this.isAdmin !== undefined && typeof this.isAdmin !== 'boolean') this.isAdmin = tryCreateBool(this.isAdmin);
-    if (this.location !== undefined && this.location.constructor === Object) this.location = new life360_location(this.api, this.location);
+  onPopulate(x) {
+    this.id = x.id;
 
-    if (this.features !== undefined && typeof this.features === 'object') {
-      var booleanKeys = ['device', 'disconnected', 'geofencing', 'mapDisplay', 'nonSmartphoneLocating', 'pendingInvite', 'shareLocation', 'smartphone'];
-      booleanKeys.forEach((key) => {
-        if (this.features[key] !== undefined && typeof this.features[key] !== 'boolean') this.features[key] = tryCreateBool(this.features[key]);
+    this.activity = x.activity;
+    this.avatar = x.avatar;
+    this.communications = x.communications;
+    this.firstName = x.firstName;
+    this.issues = x.issues;
+    this.lastName = x.lastName;
+    this.loginEmail = x.loginEmail;
+    this.loginPhone = x.loginPhone;
+    this.medical = x.medical;
+    this.pinNumber = x.issues;
+    this.relation = x.relation;
+
+    if (x.createdAt !== undefined) this.createdAt = tryCreateDate(this.createdAt);
+    if (x.isAdmin !== undefined) this.isAdmin = tryCreateBool(this.isAdmin);
+    if (x.location !== undefined) this.location = new life360_location(this.api, x.location);
+
+    if (x.features !== undefined) {
+      this.features = {};
+      const keys = [
+        'device', 'disconnected', 'geofencing', 'mapDisplay',
+        'nonSmartphoneLocating', 'pendingInvite', 'shareLocation',
+        'smartphone'
+      ];
+      keys.forEach(key => {
+        if (x.features[key] !== undefined) this.features[key] = tryCreateBool(x.features[key]);
       });
-      if (this.features.shareOffTimestamp !== undefined && typeof this.features.shareOffTimestamp !== 'object') this.features.shareOffTimestamp = tryCreateDate(this.features.shareOffTimestamp);
+      if (x.features.shareOffTimestamp !== undefined) this.features.shareOffTimestamp = tryCreateDate(x.features.shareOffTimestamp);
     }
   }
   async refresh() {
-    var json = await this.api.member(this.circle.id, this.id);
-    this._fix(json);
+    const json = await this.api.member(this.circle.id, this.id);
+    this.onPopulate(json);
     return this;
   }
   async history(time) {
@@ -446,7 +502,30 @@ class life360_member extends life360_helper {
     return request;
   }
 }
-class life360_member_list extends life360_helper {}
+class life360_member_list extends life360_helper {
+  findById(id) {
+    for (const member of this) {
+      if (member.id === id) {
+        return member;
+      }
+    }
+  }
+  findByName(name) {
+    const regex = new RegExp('.*' + name + '.*', 'i');
+    for (const member of this) {
+      if (member.firstName.match(regex)) {
+        return member;
+      }
+      if (member.lastName.match(regex)) {
+        return member;
+      }
+      const fullName = member.firstName + ' ' + member.lastName;
+      if (fullName.match(regex)) {
+        return member;
+      }
+    }
+  }
+}
 
 class life360_message extends life360_helper {}
 
@@ -454,7 +533,12 @@ class life360_place extends life360_helper {}
 
 class life360_thread extends life360_helper {}
 
-class life360_session extends life360_helper {}
+class life360_session extends life360_helper {
+  onPopulate(x) {
+    this.token_type = x.token_type;
+    this.access_token = x.access_token;
+  }
+}
 
 class life360 {
   static login() {
@@ -501,6 +585,16 @@ class life360 {
   }
   disableDebugging() {
     global.DEBUG_FLAG = false;
+  }
+  _getDeviceId() {
+    if (this._deviceId === undefined) {
+      const bytes = Buffer.alloc(8);
+      for (let i = 0; i < 8; i++) {
+        bytes[i] = Math.floor(Math.random() * 256);
+      }
+      this._deviceId = bytes.toString('hex');
+    }
+    return this._deviceId;
   }
   /**
    * Asks Life360.com to login a user.
@@ -554,10 +648,12 @@ class life360 {
     var json = await this.request('/v3/oauth2/token', {
       authorization: this.BASIC_AUTH,
       body: body,
+      headers: {
+        'X-Device-Id': this._getDeviceId(),
+      }
     });
     var token_type = json.token_type;
     if (!token_type) token_type = 'Bearer';
-    this.authorization = token_type + ' ' + json.access_token;
     this.session = new life360_session(this, json);
     return this;
   }
@@ -568,12 +664,70 @@ class life360 {
       if (global.DEBUG_FLAG === false) throw 'not implemented';
       debugger;
       this.session = undefined;
-      this.authorization = undefined;
     } else {
       throw new Error('Not logged in.');
     }
   }
-  async crimes(args) {
+  async putLocation(data) {
+    const geolocation = {};
+    const geolocationMetadata = {};
+    const device = {};
+
+    if (data.lat) geolocation.lat = data.lat;
+    if (data.lon) geolocation.lon = data.lon;
+    if (data.alt) geolocation.alt = data.alt;
+    if (data.accuracy) geolocation.accuracy = data.accuracy;
+    if (data.heading) geolocation.heading = data.heading;
+    if (data.speed) geolocation.speed = data.speed;
+    if (data.timestamp) geolocation.timestamp = data.timestamp;
+    if (data.age) geolocation.age = data.age;
+
+    if (data.wssid) geolocationMetadata.wssid = data.wssid;
+    if (data.reqssid) geolocationMetadata.reqssid = data.reqssid;
+    if (data.lmode) geolocationMetadata.lmode = data.lmode;
+
+    if (data.battery) device.battery = data.battery;
+    if (data.charge) device.charge = data.charge;
+    if (data.wifiState) device.wifi_state = data.wifiState;
+    if (data.build) device.build = data.build;
+
+    /* Make the inputs conform to the life360's api. */
+
+    if (geolocation.alt === undefined) geolocation.alt = '0.0';
+    if (geolocation.accuracy === undefined) geolocation.accuracy = '10.00';
+    if (geolocation.heading === undefined) geolocation.heading = '0.0';
+    if (geolocation.speed === undefined) geolocation.speed = '0.0';
+    if (geolocation.timestamp === undefined) {
+      const nowInSeconds = Math.floor(new Date().getTime() / 1000);
+      geolocation.timestamp = nowInSeconds + '';
+    }
+
+    if (device.build === undefined) device.build = '228980';
+    if (device.driveSDKStatus === undefined) device.driveSDKStatus = 'OFF';
+    if (device.userActivity === undefined) device.userActivity = 'unknown';
+
+    /* Change types of all properties to strings */
+
+    if (typeof geolocation.lat === 'number') geolocation.lat = geolocation.lat + ''
+    if (typeof geolocation.lon === 'number') geolocation.lon = geolocation.lon + ''
+
+    const userContext = {
+      geolocation: geolocation,
+      geolocation_meta: geolocationMetadata,
+      device: device
+    };
+    const userContextBase64 = Buffer.from(JSON.stringify(userContext)).toString('base64');
+    const json = await this.request('/v4/locations', {
+      hostname: 'android.life360.com',
+      method: 'put',
+      headers: {
+        'X-Device-ID': this._getDeviceId(),
+        'X-UserContext': userContextBase64,
+      }
+    });
+    return json;
+  }
+  async listCrimes(args) {
     var params = {};
     if (args) {
       if (args.start) params.startDate = args.start;
@@ -610,11 +764,11 @@ class life360 {
     return crimes;
   }
   async me() {
-    var json = this.request('/v3/users/me');
+    var json = await this.request('/v3/users/me');
     this._me = new life360_member(this, json);
     return this._me;
   }
-  async circles() {
+  async listCircles() {
     var json = await this.request('/v3/circles');
     this._circles = new life360_circle_list(this);
     for (var i = 0; i < json.circles.length; i++) {
@@ -622,7 +776,7 @@ class life360 {
     }
     return this._circles;
   }
-  async safetypoints() {
+  async listSafetypoints() {
     var params = {};
     var args = arguments;
     if (args.length === 1) {
@@ -641,7 +795,7 @@ class life360 {
     }
     return locations;
   }
-  async offenders() {
+  async listOffenders() {
     var params = {};
     var args = arguments;
     if (args.length === 1) {
@@ -738,7 +892,7 @@ class life360 {
     if (options.headers) {
       var headersKeys = Object.keys(options.headers);
       for (var i = 0; i < headersKeys.length; i++) {
-        headers[headersKeys[i]] = headersKeys[headersKeys[i]];
+        headers[headersKeys[i]] = options.headers[headersKeys[i]];
       }
     }
     if (options.body) {
@@ -781,8 +935,8 @@ class life360 {
       authorization = options.auth;
     } else if (options.authorization) {
       authorization = options.authorization;
-    } else if (this.authorization) {
-      authorization = this.authorization;
+    } else if (this.session) {
+      authorization = this.session.token_type + ' ' + this.session.access_token
     }
     if (authorization) {
       if (typeof authorization === 'string') {

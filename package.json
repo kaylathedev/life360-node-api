@@ -1,6 +1,6 @@
 {
   "name": "life360-node-api",
-  "version": "0.0.5",
+  "version": "0.0.7",
   "description": "An unofficial hook into Life360.com's API.",
   "main": "index.js",
   "scripts": {

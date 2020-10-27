@@ -1,6 +1,6 @@
 {
   "name": "life360-node-api",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "An unofficial hook into Life360.com's API.",
   "main": "index.js",
   "scripts": {
@@ -22,6 +22,7 @@
   },
   "homepage": "https://github.com/kaylathedev/life360-node-api#readme",
   "dependencies": {
+    "@types/node": "^14.14.2",
     "https": "^1.0.0",
     "querystring": "^0.2.0"
   },

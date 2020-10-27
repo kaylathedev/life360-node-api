@@ -3,6 +3,23 @@ const querystring = require('querystring');
 
 let DEBUG_FLAG = false;
 
+
+/**
+ * Trys to create a float from a variable of unknown type.
+ * 
+ * @param {any} x Unknown variable that might contain a float.
+ */
+function tryCreateFloat(x) {
+  if (typeof x === 'string') {
+    const floatRegex = /^-?\d+(?:[.,]\d*?)?$/;
+    if (floatRegex.test(x)) {
+      const result = parseFloat(x);
+      if (!isNaN(result)) return result;
+    }
+  }
+  return x;
+}
+
 /**
  * Trys to create an integer from a variable of unknown type.
  * 
@@ -47,7 +64,7 @@ function tryCreateDate(x) {
     }
   }
   try {
-    var ret = new Date(x);
+    const ret = new Date(x);
     if (isNaN(ret)) return x;
     return ret;
   } catch (e) {
@@ -61,20 +78,26 @@ function tryCreateDate(x) {
  * @param {any} x 
  */
 function findLatLonFromVariable(x) {
-  const latitudeMin = -90;
-  const latitudeMax = 90;
-  const longitudeMin = -180;
-  const longitudeMax = 180;
-  var type = typeof x;
-  var lat, lon;
+  const latMin = -90;
+  const latMax = 90;
+  const lonMin = -180;
+  const lonMax = 180;
+  const type = typeof x;
+  let lat, lon;
   if (type === 'object') {
     if (x.constructor && x.constructor === Array) {
       if (x.length === 2) {
-        var a = x[0];
-        var b = x[1];
+        const a = x[0];
+        const b = x[1];
 
-        throw new Error('not implemented');
-
+        if (a > latMax || a < latMin) {
+          lon = a;
+          lat = b;
+        } else {
+          lat = a;
+          lon = b;
+        }
+        return { lat, lon };
       } else if (x.length === 1) {
         return findLatLonFromVariable(x[0]);
       } else {
@@ -97,7 +120,7 @@ function findLatLonFromVariable(x) {
       if (lon === undefined) {
         throw new Error('Unable to find longitude from coordinates');
       }
-      return { lat: lat, lon: lon };
+      return { lat, lon };
     }
   }
   throw new Error('Unable to parse coordinates');
@@ -109,29 +132,23 @@ class life360_helper {
    * @param {life360} api 
    * @param {object} [props]
    */
-  constructor(api, props) {
+  constructor(api) {
       if (api === undefined || !(api instanceof life360)) {
         throw new Error('First argument must be an instance of life360!');
       }
       this.api = api;
       this.request = api.request.bind(this.api);
-      if (props instanceof Object) {
-        this._originalProperties = props;
-        if (this.onPopulate !== undefined) {
-          this.onPopulate(props);
-        }
-      }
     }
     *[Symbol.iterator]() {
       if (this.length === undefined) {
         throw new Error('This object can not be iterated on!');
       }
-      for (var i = 0, len = this.length; i < len; i++) {
+      for (let i = 0, len = this.length; i < len; i++) {
         yield this[i];
       }
     }
   clearChildren() {
-    for (var i = 0, len = this.length; i < len; i++) {
+    for (let i = 0, len = this.length; i < len; i++) {
       this[i] = undefined;
     }
     this.length = 0;
@@ -152,15 +169,17 @@ class life360_helper {
  * Use the check() method to ask the server for the status of the request.
  */
 class life360_location_request extends life360_helper {
-  constructor(api, props) {
-    super(api, props);
-    this.requestId = props.requestId;
-    this.isPollable = props.isPollable;
+  populate(x) {
+    Object.assign(this, x);
+
+    this.requestId = x.requestId;
+    this.isPollable = x.isPollable;
   }
   async check() {
-    var json = await this.request('/v3/circles/members/request/' + this.requestId);
+    const json = await this.request('/v3/circles/members/request/' + this.requestId);
     if (json.status === 'A') {
-      this.location = new life360_location(this.api, json.location);
+      this.location = new life360_location(this.api);
+      this.location.populate(json.location);
       this.success_response = json;
       return true;
     }
@@ -169,10 +188,11 @@ class life360_location_request extends life360_helper {
 }
 
 class life360_checkin_request extends life360_helper {
-  constructor(api, props) {
-    super(api, props);
-    this.requestId = props.requestId;
-    this.isPollable = props.isPollable;
+  populate(x) {
+    Object.assign(this, x);
+
+    this.requestId = x.requestId;
+    this.isPollable = x.isPollable;
   }
   async check() {
     // TODO: Figure out why this is returning the following.
@@ -194,125 +214,132 @@ class life360_checkin_request extends life360_helper {
 }
 
 class life360_circle extends life360_helper {
-  onPopulate(x) {
-    this.id = x.id;
-    this.color = x.color;
+  populate(x) {
+    /**
+     * id, color, name, type
+     */
+    Object.assign(this, x);
+
     this.createdAt = tryCreateDate(x.createdAt);
-    this.features = x.features;
     this.memberCount = tryCreateInt(x.memberCount);
-    this.name = x.name;
-    this.type = x.type;
-    this.unreadMessages = x.unreadMessages;
-    this.unreadNotifications = x.unreadNotifications;
+    this.unreadMessages = tryCreateInt(x.unreadMessages);
+    this.unreadNotifications = tryCreateInt(x.unreadNotifications);
+
+    if (x.features instanceof Object) {
+      if (x.features.premium !== undefined) {
+        x.features.premium = tryCreateInt(x.features.premium);
+        x.features.priceMonth = tryCreateInt(x.features.priceMonth);
+        x.features.priceYear = tryCreateInt(x.features.priceYear);
+      }
+      this.features = x.features;
+    }
 
     this.members = new life360_member_list(this.api);
     this.members.circle = this;
     if (x.members) {
-      for (var i = 0; i < x.members.length; i++) {
-        const child = this.members.addChild(new life360_member(this.api, x.members[i]));
-        child.circle = this;
-      }
+      this.members.populate(x.members);
     }
   }
   async refresh() {
     const json = await this.request('/v3/circles/' + this.id);
-    this.onPopulate(json);
+    this.populate(json);
     return this;
   }
 
 
   async allPlaces() {
-    var json = await this.request('/v3/circles/' + this.id + '/allplaces');
+    const json = await this.request('/v3/circles/' + this.id + '/allplaces');
     // todo: return life360_place_list
-    return new life360_place_list(this, json.places);
+    const places = new life360_place_list(this);
+    places.populate(json.places);
+    return places;
   }
   async code() {
     if (global.DEBUG_FLAG === false) throw 'not implemented';
-    var json = await this.request('/v3/circles/' + this.id + '/code');
+    const json = await this.request('/v3/circles/' + this.id + '/code');
     return json;
   }
   async emergencycontacts() {
     if (global.DEBUG_FLAG === false) throw 'not implemented';
-    var json = await this.request('/v3/circles/' + this.id + '/emergencyContacts');
-    var emergencyContacts = json.emergencyContacts; // array
-    for (var emergencyContact of emergencyContacts) {
+    const json = await this.request('/v3/circles/' + this.id + '/emergencyContacts');
+    const emergencyContacts = json.emergencyContacts; // array
+    for (const emergencyContact of emergencyContacts) {
       debugger;
     }
     debugger;
     return json;
   }
   async member(member_id) {
-    var json = await this.request('/v3/circles/' + this.id + '/members/' + member_id);
+    const json = await this.request('/v3/circles/' + this.id + '/members/' + member_id);
     debugger;
     return json;
   }
   async memberAlerts() {
-    var json = await this.request('/v3/circles/' + this.id + '/member/alerts');
+    const json = await this.request('/v3/circles/' + this.id + '/member/alerts');
     debugger;
     return json;
   }
   async memberPreferences() {
-    var json = await this.request('/v3/circles/' + this.id + '/member/preferences');
+    const json = await this.request('/v3/circles/' + this.id + '/member/preferences');
     debugger;
     return json;
   }
 
 
   async membersHistory(since) {
-    var params;
+    let params;
     if (since !== undefined) {
       if (since instanceof Date) {
         since = Math.floor(a.getTime() / 1000);
       } else if (typeof since === 'string') {
         since = Math.floor((new Date(since)).getTime() / 1000);
       }
-      params = { since: since };
+      params = { since };
     }
-    var json = await this.request('/v3/circles/' + this.id + '/members/history', { params: params });
-    var locations = new life360_location_list(this.api);
-    for (var i = 0; i < json.locations.length; i++) {
-      locations.addChild(new life360_location(this.api, json[i].locations));
+    const json = await this.request('/v3/circles/' + this.id + '/members/history', { params });
+    const locations = new life360_location_list(this.api);
+    for (let i = 0; i < json.locations.length; i++) {
+      const location = new life360_location(this.api);
+      location.populate(json[i].locations);
+      locations.addChild(location);
     }
     return locations;
   }
   async listMembers() {
-    var json = await this.request('/v3/circles/' + this.id + '/members');
+    const json = await this.request('/v3/circles/' + this.id + '/members');
     this.members = new life360_member_list(this.api);
     this.members.circle = this;
-    for (let i = 0; i < json.members.length; i++) {
-      const child = this.members.addChild(new life360_member(this.api, json.members[i]));
-      child.circle = this;
-    }
+    this.members.populate(json.members);
     return this.members;
   }
   async listMessages(count) {
     let params;
     if (count !== undefined) params = { count };
-    var json = await this.request('/v3/circles/' + this.id + '/messages', {
-      params: params,
+    const json = await this.request('/v3/circles/' + this.id + '/messages', {
+      params,
     });
     debugger;
     return json;
   }
   async listNearbyplaces(lat, lon, wifiscan) {
-    var params;
+    let params;
     if (wifiscan !== undefined) {
       params = { wifiscan: wifiscan };
     }
-    var json = await this.request('/v3/circles/' + this.id + '/nearbyplaces/' + lat + '/' + lon);
+    const json = await this.request('/v3/circles/' + this.id + '/nearbyplaces/' + lat + '/' + lon);
     // todo: return life360_place_list
     debugger;
     return json;
   }
   async listPlaces() {
-    var json = await this.request('/v3/circles/' + this.id + '/places');
+    const json = await this.request('/v3/circles/' + this.id + '/places');
     // todo: return life360_place_list
     debugger;
     return json;
   }
   async watchlist() {
     if (global.DEBUG_FLAG === false) throw 'not implemented';
-    var json = await this.request('/v3/circles/' + this.id + '/driverbehavior/watchlist');
+    const json = await this.request('/v3/circles/' + this.id + '/driverbehavior/watchlist');
     debugger;
     /*
       {
@@ -327,21 +354,21 @@ class life360_circle extends life360_helper {
   }
 
   async setCode(code) {
-    var json = await this.request('/v3/circles/' + this.id + '/code', {
+    const json = await this.request('/v3/circles/' + this.id + '/code', {
       method: 'post',
     });
     debugger;
     return json;
   }
   async startSmartRealTime() {
-    var json = await this.request('/v3/circles/' + this.id + '/smartRealTime/start', {
+    const json = await this.request('/v3/circles/' + this.id + '/smartRealTime/start', {
       method: 'post',
     });
     debugger;
     return json;
   }
   async sendMessage() {
-    var json = await this.request('/v3/circles/' + this.id + '/threads/message', {
+    const json = await this.request('/v3/circles/' + this.id + '/threads/message', {
       method: 'post',
     });
     debugger;
@@ -349,6 +376,13 @@ class life360_circle extends life360_helper {
   }
 }
 class life360_circle_list extends life360_helper {
+  populate(x) {
+    for (let i = 0; i < x.circles.length; i++) {
+      const circle = new life360_circle(this.api);
+      circle.populate(x.circles[i]);
+      this.addChild(circle);
+    }
+  }
   findById(id) {
     for (const circle of this) {
       if (circle.id === id) {
@@ -367,80 +401,143 @@ class life360_circle_list extends life360_helper {
 }
 
 class life360_crime extends life360_helper {
-  onPopulate(x) {
-    if (x.incidentDate !== undefined) this.incidentDate = tryCreateDate(x.incidentDate);
-    if (x.incident_date !== undefined) this.incident_date = tryCreateDate(x.incident_date);
+  populate(x) {
+    Object.assign(this, x);
 
-    if (x.id !== undefined) this.id = tryCreateInt(x.id);
+    this.incidentDate = tryCreateDate(x.incidentDate);
+    this.incident_date = tryCreateDate(x.incident_date);
+
+    this.latitude = tryCreateFloat(x.latitude);
+    this.longitude = tryCreateFloat(x.longitude);
+
+    this.id = tryCreateInt(x.id);
   }
 }
 class life360_crime_list extends life360_helper {}
 
-class life360_offender extends life360_helper {}
+class life360_offender extends life360_helper {
+  populate(x) {
+    Object.assign(this, x);
+
+    this.age = tryCreateInt(x.age);
+    this.latitude = tryCreateFloat(x.latitude);
+    this.longitude = tryCreateFloat(x.longitude);
+    this.weight = tryCreateInt(x.weight);
+  }
+}
 
 class life360_offender_list extends life360_helper {}
 
 class life360_safetypoint extends life360_helper {
-  onPopulate(x) {
-    if (x.incidentDate !== undefined) this.incidentDate = tryCreateDate(x.incidentDate);
-    if (x.incident_date !== undefined) this.incident_date = tryCreateDate(x.incident_date);
+  populate(x) {
+    Object.assign(this, x);
 
-    if (x.id !== undefined) this.id = tryCreateInt(x.id);
+    this.incidentDate = tryCreateDate(x.incidentDate);
+    this.incident_date = tryCreateDate(x.incident_date);
+
+    this.latitude = tryCreateFloat(x.latitude);
+    this.longitude = tryCreateFloat(x.longitude);
+
+    this.id = tryCreateInt(x.id);
   }
 }
 class life360_safetypoint_list extends life360_helper {}
 
 class life360_location extends life360_helper {
-  onPopulate(x) {
-    this.address1 = x.address1;
-    this.address2 = x.address2;
-    this.driveSDKStatus = x.driveSDKStatus;
-    this.latitude = x.latitude;
-    this.longitude = x.longitude;
-    this.name = x.name;
-    this.placeType = x.placeType;
-    this.shortAddress = x.shortAddress;
-    this.source = x.source;
-    this.sourceId = x.sourceId;
-    this.tripId = x.tripId;
-    this.userActivity = x.userActivity;
+  populate(x) {
+    Object.assign(this, x);
+    /**
+     * address1, address2, driveSDKStatus, lat, lon, name, placeType
+     * shortAddress, source, sourceId, tripId, userActivity
+     */
 
-    if (x.startTimestamp !== undefined) this.startTimestamp = tryCreateDate(x.startTimestamp);
-    if (x.endTimestamp !== undefined) this.endTimestamp = tryCreateDate(x.endTimestamp);
-    if (x.since !== undefined) this.since = tryCreateDate(x.since);
-    if (x.timestamp !== undefined) this.timestamp = tryCreateDate(x.timestamp);
+    this.startTimestamp = tryCreateDate(x.startTimestamp);
+    this.endTimestamp = tryCreateDate(x.endTimestamp);
+    this.since = tryCreateDate(x.since);
+    this.timestamp = tryCreateDate(x.timestamp);
 
-    if (x.accuracy !== undefined) this.accuracy = tryCreateInt(x.accuracy);
-    if (x.battery !== undefined) this.battery = tryCreateInt(x.battery);
-    if (x.charge !== undefined) this.charge = tryCreateInt(x.charge);
-    if (x.speed !== undefined) this.speed = tryCreateInt(x.speed);
+    this.accuracy = tryCreateInt(x.accuracy);
+    this.battery = tryCreateInt(x.battery);
+    this.charge = tryCreateInt(x.charge);
+    this.speed = tryCreateInt(x.speed);
 
-    if (x.inTransit !== undefined) this.inTransit = tryCreateBool(x.inTransit);
-    if (x.isDriving !== undefined) this.isDriving = tryCreateBool(x.isDriving);
-    if (x.wifiState !== undefined) this.wifiState = tryCreateBool(x.wifiState);
+    this.inTransit = tryCreateBool(x.inTransit);
+    this.isDriving = tryCreateBool(x.isDriving);
+    this.wifiState = tryCreateBool(x.wifiState);
   }
 }
 class life360_location_list extends life360_helper {}
 
 class life360_member extends life360_helper {
-  onPopulate(x) {
-    this.id = x.id;
+  populate(x) {
+    /**
+     * id, activity, avatar, avatarAuthor, cobranding, communications
+     * firstName, issues, langauge, lastName, locale, loginEmail, loginPhone
+     * medical, pinNumber, relation
+     */
+    Object.assign(this, x);
 
-    this.activity = x.activity;
-    this.avatar = x.avatar;
-    this.communications = x.communications;
-    this.firstName = x.firstName;
-    this.issues = x.issues;
-    this.lastName = x.lastName;
-    this.loginEmail = x.loginEmail;
-    this.loginPhone = x.loginPhone;
-    this.medical = x.medical;
-    this.pinNumber = x.issues;
-    this.relation = x.relation;
+    this.created = tryCreateDate(x.created);
+    this.createdAt = tryCreateDate(x.createdAt);
 
-    if (x.createdAt !== undefined) this.createdAt = tryCreateDate(this.createdAt);
-    if (x.isAdmin !== undefined) this.isAdmin = tryCreateBool(this.isAdmin);
-    if (x.location !== undefined) this.location = new life360_location(this.api, x.location);
+    this.isAdmin = tryCreateBool(x.isAdmin);
+    if (x.location) {
+      this.location = new life360_location(this.api);
+      this.location.populate(x.location);
+    }
+
+    if (x.settings) {
+      /*
+      settings = {
+        alerts: {
+          crime: bool,
+          sound: bool,
+        },
+        dateFormat: string,
+        locale: string,
+        map: {
+          advisor: bool,
+          crime: bool,
+          crimeDuration: string,
+          family: bool,
+          fire: bool,
+          hospital: bool,
+          memberRadius: bool,
+          placeRadius: bool,
+          police: bool,
+          sexOffenders: bool,
+        },
+        timeZone: string,
+        unitOfMeasure: string,
+        zendrive: {
+          sdk_enabled: string
+        }
+      }
+      */
+      if (x.settings.alerts) {
+        x.settings.alerts.crime = tryCreateBool(x.settings.alerts.crime);
+        x.settings.alerts.sound = tryCreateBool(x.settings.alerts.sound);
+      }
+      if (x.settings.map) {
+        x.settings.map.advisor = tryCreateBool(x.settings.map.advisor);
+        x.settings.map.crime = tryCreateBool(x.settings.map.crime);
+        x.settings.map.crimeDuration = tryCreateBool(x.settings.map.crimeDuration);
+        x.settings.map.family = tryCreateBool(x.settings.map.family);
+        x.settings.map.fire = tryCreateBool(x.settings.map.fire);
+        x.settings.map.hospital = tryCreateBool(x.settings.map.hospital);
+        x.settings.map.memberRadius = tryCreateBool(x.settings.map.memberRadius);
+        x.settings.map.placeRadius = tryCreateBool(x.settings.map.placeRadius);
+        x.settings.map.police = tryCreateBool(x.settings.map.police);
+        x.settings.map.sexOffenders = tryCreateBool(x.settings.map.sexOffenders);
+      }
+      this.settings = x.settings;
+    }
+
+    if (x.issues) {
+      x.issues.disconnected = tryCreateBool(x.issues.disconnected);
+      x.issues.troubleshooting = tryCreateBool(x.issues.troubleshooting);
+      this.issues = x.issues;
+    }
 
     if (x.features !== undefined) {
       this.features = {};
@@ -457,11 +554,11 @@ class life360_member extends life360_helper {
   }
   async refresh() {
     const json = await this.api.member(this.circle.id, this.id);
-    this.onPopulate(json);
+    this.populate(json);
     return this;
   }
   async history(time) {
-    var params;
+    let params;
     if (time !== undefined) {
       if (time instanceof Date) {
         time = Math.floor(a.getTime() / 1000);
@@ -470,39 +567,51 @@ class life360_member extends life360_helper {
       }
       params = { time: time };
     }
-    var json = await this.request('/v3/circles/' + this.circle.id + '/members/' + this.id + '/history', { params: params });
-    var locations = new life360_location_list(this.api);
-    for (var i = 0; i < json.locations.length; i++) {
-      locations.addChild(new life360_location(this.api, json.locations[i]));
+    const json = await this.request('/v3/circles/' + this.circle.id + '/members/' + this.id + '/history', { params });
+    const locations = new life360_location_list(this.api);
+    for (let i = 0; i < json.locations.length; i++) {
+      const location = new life360_location(this.api);
+      location.populate(json.locations[i]);
+      locations.addChild(location);
     }
     return locations;
   }
   async requestLocation() {
-    var json = await this.request('/v3/circles/' + this.circle.id + '/members/' + this.id + '/request', {
+    const json = await this.request('/v3/circles/' + this.circle.id + '/members/' + this.id + '/request', {
       method: 'post',
       body: {
         type: 'location',
       },
     });
-    var request = new life360_location_request(this.api, json);
+    const request = new life360_location_request(this.api);
+    request.populate(json);
     request.member = this;
     request.circle = this.circle;
     return request;
   }
   async requestCheckIn() {
-    var json = await this.request('/v3/circles/' + this.circle.id + '/members/' + this.id + '/request', {
+    const json = await this.request('/v3/circles/' + this.circle.id + '/members/' + this.id + '/request', {
       method: 'post',
       body: {
         type: 'checkin',
       },
     });
-    var request = new life360_checkin_request(this.api, json);
+    const request = new life360_checkin_request(this.api);
+    request.populate(json);
     request.member = this;
     request.circle = this.circle;
     return request;
   }
 }
 class life360_member_list extends life360_helper {
+  populate(x) {
+    for (let i = 0; i < x.length; i++) {
+      const member = new life360_member(this.api);
+      member.populate(x[i]);
+      member.circle = this;
+      this.addChild(member);
+    }
+  }
   findById(id) {
     for (const member of this) {
       if (member.id === id) {
@@ -534,13 +643,18 @@ class life360_place extends life360_helper {}
 class life360_thread extends life360_helper {}
 
 class life360_session extends life360_helper {
-  onPopulate(x) {
+  populate(x) {
+    Object.assign(this, x);
+
     this.token_type = x.token_type;
     this.access_token = x.access_token;
   }
 }
 
 class life360 {
+  /**
+   * @returns life360
+   */
   static login() {
     if (this._instance === undefined) this._instance = new life360();
     return this._instance.login.apply(this._instance, arguments);
@@ -551,7 +665,7 @@ class life360 {
   }
   static crimes() {
     if (this._instance === undefined) this._instance = new life360();
-    return this._instance.crimes.apply(this._instance, arguments);
+    return this._instance.listCrimes.apply(this._instance, arguments);
   }
   static me() {
     if (this._instance === undefined) this._instance = new life360();
@@ -559,11 +673,11 @@ class life360 {
   }
   static circles() {
     if (this._instance === undefined) this._instance = new life360();
-    return this._instance.circles.apply(this._instance, arguments);
+    return this._instance.listCircles.apply(this._instance, arguments);
   }
-  static safetypoints() {
+  static safetyPoints() {
     if (this._instance === undefined) this._instance = new life360();
-    return this._instance.safetypoints.apply(this._instance, arguments);
+    return this._instance.listSafetyPoints.apply(this._instance, arguments);
   }
   static offenders() {
     if (this._instance === undefined) this._instance = new life360();
@@ -600,7 +714,7 @@ class life360 {
    * Asks Life360.com to login a user.
    */
   async login() {
-    var body = {
+    const body = {
       countryCode: 1,
       password: '',
       username: '',
@@ -610,7 +724,7 @@ class life360 {
     if (arguments.length === 0) {
       throw new Error('Must provide an argument to life360.login');
     } else if (arguments.length === 1) {
-      var arg = arguments[0];
+      let arg = arguments[0];
       if (typeof arg === 'object') {
         if (arg.username !== undefined) body.username = arg.username;
         if (arg.user !== undefined) body.username = arg.user;
@@ -624,14 +738,14 @@ class life360 {
         throw new Error('First and only argument must be an object');
       }
     } else if (arguments.length === 2) {
-      var arg1 = arguments[0];
-      var arg2 = arguments[1];
+      let arg1 = arguments[0];
+      let arg2 = arguments[1];
       if (typeof arg1 === 'string') {
-        var emailRegex = /^[^@]+@[^\.]+$/;
+        let emailRegex = /^[^@]+@[^\.]+$/;
         if (arg1.match(emailRegex)) {
           body.username = arg1;
         } else {
-          var phoneRegex = /^[0-9()-+ #\.]+$/;
+          let phoneRegex = /^[0-9()-+ #\.]+$/;
           if (arg1.match(phoneRegex)) {
             body.phone = arg1;
           } else {
@@ -645,22 +759,23 @@ class life360 {
         throw new Error('Second argument must be a password string');
       }
     }
-    var json = await this.request('/v3/oauth2/token', {
+    const json = await this.request('/v3/oauth2/token', {
       authorization: this.BASIC_AUTH,
       body: body,
       headers: {
         'X-Device-Id': this._getDeviceId(),
       }
     });
-    var token_type = json.token_type;
+    let token_type = json.token_type;
     if (!token_type) token_type = 'Bearer';
-    this.session = new life360_session(this, json);
+    this.session = new life360_session(this);
+    this.session.populate(json);
     return this;
   }
   async logout() {
     if (this.session) {
-      var access_token = this.session.access_token;
-      var token_type = this.session.token_type;
+      let access_token = this.session.access_token;
+      let token_type = this.session.token_type;
       if (global.DEBUG_FLAG === false) throw 'not implemented';
       debugger;
       this.session = undefined;
@@ -728,19 +843,19 @@ class life360 {
     return json;
   }
   async listCrimes(args) {
-    var params = {};
+    const params = {};
     if (args) {
       if (args.start) params.startDate = args.start;
       if (args.end) params.endDate = args.end;
       if (args.page) params.page = args.page;
       if (args.pageSize) params.pageSize = args.pageSize;
       if (args.topLeft) {
-        var topLeftLatLon = findLatLonFromVariable(args.topLeft);
+        const topLeftLatLon = findLatLonFromVariable(args.topLeft);
         params['boundingBox[topLeftLatitude]'] = topLeftLatLon.lat;
         params['boundingBox[topLeftLongitude]'] = topLeftLatLon.lon;
       }
       if (args.bottomRight) {
-        var bottomRightLatLon = findLatLonFromVariable(args.bottomRight);
+        const bottomRightLatLon = findLatLonFromVariable(args.bottomRight);
         params['boundingBox[bottomRightLatitude]'] = bottomRightLatLon.lat;
         params['boundingBox[bottomRightLongitude]'] = bottomRightLatLon.lon;
       }
@@ -755,96 +870,105 @@ class life360 {
     if (params.endDate instanceof Date) {
       params.endDate = Math.floor(params.endDate.getTime() / 1000);
     }
-    var json = await this.request('/v3/crimes', { params: params });
-    var crimes_json = json.crimes;
-    var crimes = new life360_crime_list(this);
-    for (var i = 0; i < crimes_json.length; i++) {
-      crimes.addChild(new life360_crime(this.api, crimes_json[i]));
+    const json = await this.request('/v3/crimes', { params });
+    const crimes = new life360_crime_list(this);
+    for (let i = 0; i < json.crimes.length; i++) {
+      const crime = new life360_crime(this);
+      crime.populate(json.crimes[i]);
+      crimes.addChild(crime);
     }
     return crimes;
   }
   async me() {
-    var json = await this.request('/v3/users/me');
-    this._me = new life360_member(this, json);
+    const json = await this.request('/v3/users/me');
+    this._me = new life360_member(this);
+    this._me.populate(json);
     return this._me;
   }
   async listCircles() {
-    var json = await this.request('/v3/circles');
+    const json = await this.request('/v3/circles');
     this._circles = new life360_circle_list(this);
-    for (var i = 0; i < json.circles.length; i++) {
-      this._circles.addChild(new life360_circle(this, json.circles[i]));
-    }
+    this._circles.populate(json);
     return this._circles;
   }
-  async listSafetypoints() {
-    var params = {};
-    var args = arguments;
+  async listSafetyPoints() {
+    const params = {};
+    const args = arguments;
     if (args.length === 1) {
-      var latLon = findLatLonFromVariable(args[0]);
+      const latLon = findLatLonFromVariable(args[0]);
       params['centerPoint[latitude]'] = latLon.lat;
       params['centerPoint[longitude]'] = latLon.lon;
     } else if (args.length === 2) {
       params['centerPoint[latitude]'] = args[0];
       params['centerPoint[longitude]'] = args[1];
     }
-    var json = await this.request('/v3/safetyPoints', { params: params });
-    var locations = new life360_safetypoint_list(this.api);
-    for (var i = 0; i < json.safetyPoints.length; i++) {
-      var child = locations.addChild(new life360_safetypoint(this.api, json.safetyPoints[i]));
-      child.locationType = 'safetyPoint';
+    const json = await this.request('/v3/safetyPoints', { params });
+    const locations = new life360_safetypoint_list(this);
+    for (let i = 0; i < json.safetyPoints.length; i++) {
+      const location = new life360_safetypoint(this);
+      location.populate(json.safetyPoints[i]);
+      location.locationType = 'safetyPoint';
+      locations.addChild(location);
     }
     return locations;
   }
-  async listOffenders() {
-    var params = {};
-    var args = arguments;
-    if (args.length === 1) {
-      var latLon = findLatLonFromVariable(args[0]);
-      params['centerPoint[latitude]'] = latLon.lat;
-      params['centerPoint[longitude]'] = latLon.lon;
-    } else if (args.length === 2) {
-      params['centerPoint[latitude]'] = args[0];
-      params['centerPoint[longitude]'] = args[1];
+  async listOffenders(args) {
+    const params = {};
+    if (args) {
+      if (args.limit) params['limit'] = args.limit;
+      if (args.topLeft) {
+        const topLeftLatLon = findLatLonFromVariable(args.topLeft);
+        params['boundingBox[topLeftLatitude]'] = topLeftLatLon.lat;
+        params['boundingBox[topLeftLongitude]'] = topLeftLatLon.lon;
+      }
+      if (args.bottomRight) {
+        const bottomRightLatLon = findLatLonFromVariable(args.bottomRight);
+        params['boundingBox[bottomRightLatitude]'] = bottomRightLatLon.lat;
+        params['boundingBox[bottomRightLongitude]'] = bottomRightLatLon.lon;
+      }
+      if (args.topLeftLat) params['boundingBox[topLeftLatitude]'] = args.topLeftLat;
+      if (args.topLeftLon) params['boundingBox[topLeftLongitude]'] = args.topLeftLon;
+      if (args.bottomRightLat) params['boundingBox[bottomRightLatitude]'] = args.bottomRightLat;
+      if (args.bottomRightLon) params['boundingBox[bottomRightLongitude]'] = args.bottomRightLon;
     }
-    var json = await this.request('/v3/safetyPoints', { params: params });
-    var locations = new life360_offender_list(this.api);
-    for (var i = 0; i < json.safetyPoints.length; i++) {
-      var child = locations.addChild(new life360_offender(this.api, json.safetyPoints[i]));
-      child.locationType = 'safetyPoint';
+    const json = await this.request('/v3/offenders', { params });
+    const offenders = new life360_offender_list(this);
+    for (let i = 0; i < json.offenders.length; i++) {
+      const offender = new life360_offender(this);
+      offender.populate(json.offenders[i]);
+      offenders.addChild(offender);
     }
-    return locations;
+    return offenders;
   }
   request(a, b) {
-    var options;
+    let options;
     if (b === undefined) {
       if (typeof a === 'string') {
-        options = {
-          path: a,
-        };
+        options = { path: a };
       }
     } else {
       options = b;
       options.path = a;
     }
-    var self = this;
+    const self = this;
 
     function findHeaderCaseInsensitive(name, headers) {
-      var keys = Object.keys(headers);
-      for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
+      const keys = Object.keys(headers);
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
         if (key.localeCompare(name, self.locale, { sensitivity: 'base' }) === 0) {
           return headers[key];
         }
       }
     }
 
-    var hostname = this.defaults.hostname;
-    var path = this.defaults.path;
-    var encoding = this.defaults.encoding;
-    var headers = {};
-    var body = this.defaults.body;
-    var type = this.defaults.type;
-    var method = this.defaults.method;
+    let hostname = this.defaults.hostname;
+    let path = this.defaults.path;
+    let encoding = this.defaults.encoding;
+    let headers = {};
+    let body = this.defaults.body;
+    let type = this.defaults.type;
+    let method = this.defaults.method;
     let params = this.defaults.params;
     if (options.hostname) {
       hostname = options.hostname;
@@ -855,10 +979,10 @@ class life360 {
       path = '/';
     }
     if (this.defaults.headers) {
-      var keys = Object.keys(this.defaults.headers);
-      for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        var value = this.defaults.headers[key];
+      const keys = Object.keys(this.defaults.headers);
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        const value = this.defaults.headers[key];
         headers[key] = value;
       }
     }
@@ -890,8 +1014,8 @@ class life360 {
       }
     }
     if (options.headers) {
-      var headersKeys = Object.keys(options.headers);
-      for (var i = 0; i < headersKeys.length; i++) {
+      const headersKeys = Object.keys(options.headers);
+      for (let i = 0; i < headersKeys.length; i++) {
         headers[headersKeys[i]] = options.headers[headersKeys[i]];
       }
     }
@@ -930,7 +1054,7 @@ class life360 {
       headers['Content-Length'] = body.byteLength;
     }
 
-    var authorization;
+    let authorization;
     if (options.auth) {
       authorization = options.auth;
     } else if (options.authorization) {
@@ -945,8 +1069,8 @@ class life360 {
         }
         headers.Authorization = authorization;
       } else if (typeof authorization === 'object') {
-        var auth_type;
-        var base64_value;
+        let auth_type;
+        let base64_value;
         if (authorization.base64) {
           base64_value = authorization.base64;
         }
@@ -971,7 +1095,7 @@ class life360 {
     if (params) {
       path += '?' + params;
     }
-    var request_options = {
+    const request_options = {
       hostname: hostname,
       path: path,
       method: method,
@@ -986,12 +1110,12 @@ class life360 {
         let bodyType;
 
         // Find the server-provided content-type and character set
-        var contentTypeHeader = findHeaderCaseInsensitive('content-type', res.headers);
+        const contentTypeHeader = findHeaderCaseInsensitive('content-type', res.headers);
         if (contentTypeHeader !== undefined) {
-          var parts = contentTypeHeader.split(';');
+          const parts = contentTypeHeader.split(';');
           bodyType = parts[0];
-          for (var i = 1; i < parts.length; i++) {
-            var part = parts[i].split('=');
+          for (let i = 1; i < parts.length; i++) {
+            const part = parts[i].split('=');
             if (part[0] === 'charset') {
               if (part.length > 1) {
                 bodyCharset = part[1];
@@ -1011,7 +1135,7 @@ class life360 {
           try {
             // done reading body
 
-            var body;
+            let body;
             if (buffer) {
               if (bodyType === 'application/json') {
                 body = JSON.parse(buffer);

@@ -33,7 +33,7 @@ Get a list of your circles and log the names of each of them
 ```js
 let circles = await client.listCircles()
 
-for (var circle of circles) {
+for (const circle of circles) {
   console.log(circle.name)
 }
 ```
@@ -46,7 +46,8 @@ let myCircle = circles[0]
 // let myCircle = circles.findByName('family')
 let members = await myCircle.listMembers()
 
-for (var member of members) {
+for (const member of members) {
   console.log(`${member.firstName} ${member.lastName}`)
+  console.log(`${member.location.latitude}, ${member.location.longitude}`)
 }
 ```

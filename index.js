@@ -686,7 +686,7 @@ class life360 {
   constructor() {
     this.BASIC_AUTH = 'Basic U3dlcUFOQWdFVkVoVWt1cGVjcmVrYXN0ZXFhVGVXckFTV2E1dXN3MzpXMnZBV3JlY2hhUHJlZGFoVVJhZ1VYYWZyQW5hbWVqdQ==';
     this.defaults = {
-      hostname: 'www.life360.com',
+      hostname: 'api-cloudfront.life360.com',
       headers: {
         Accept: 'application/json',
         'X-Application': 'life360-web-client',
